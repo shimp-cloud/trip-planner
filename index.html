@@ -512,6 +512,13 @@ function mapsLink(query) {
 }
 
 // ---------- やりたいこと×日程 自動プラン作成 ----------
+function formatDateLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return y + "-" + m + "-" + day;
+}
+
 function dateRangeList(start, end) {
   const dates = [];
   const d = new Date(start + "T00:00:00");
@@ -519,7 +526,7 @@ function dateRangeList(start, end) {
   if (isNaN(d.getTime()) || isNaN(last.getTime()) || d > last) return dates;
   const cur = new Date(d);
   while (cur <= last) {
-    dates.push(cur.toISOString().slice(0, 10));
+    dates.push(formatDateLocal(cur));
     cur.setDate(cur.getDate() + 1);
   }
   return dates;
