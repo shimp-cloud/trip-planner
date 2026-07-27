@@ -209,6 +209,22 @@
       </div>
     </div>
     <div id="suggestionResults"></div>
+
+    <div class="card">
+      <h2>やりたいこと × 日程から旅程を自動作成</h2>
+      <p style="font-size:0.82rem; color:var(--sub); margin-top:-4px;">「やりたいこと」タブに追加した候補と、出発日・終了日を指定すると、行程表に自動で振り分けます。</p>
+      <div class="grid-form">
+        <input type="date" id="planStartDate">
+        <input type="date" id="planEndDate">
+        <input type="text" id="planAreaName" placeholder="大まかな場所（例: 京都）" class="full">
+      </div>
+      <div style="margin:10px 0 6px; font-size:0.85rem; color:var(--sub);">旅程に入れる候補（チェックを外すと除外）:</div>
+      <div id="planWishlistCheckboxes"></div>
+      <div style="margin-top:12px;">
+        <button onclick="generateAutoPlan()">この内容で旅程を自動作成</button>
+      </div>
+    </div>
+    <div id="planResultInfo"></div>
   </div>
 
   <!-- 行程表 -->
@@ -459,13 +475,118 @@ function generateSuggestions() {
       <h3>${escapeHtml(d.name)}</h3>
       <div class="score">マッチ度スコア: ${score} ・ ${d.domestic ? "国内" : "海外"}</div>
       ${d.trend ? `<div class="spots" style="color:var(--accent);">🔥 ${escapeHtml(d.trend)}</div>` : ""}
-      <div class="spots">${d.spots.map(s => `<span class="badge">${escapeHtml(s)}</span>`).join(" ")}</div>
+      <div class="spots">${d.spots.map(s => `<a href="${mapsLink(d.name + ' ' + s)}" target="_blank" rel="noopener" class="badge" style="text-decoration:none;">${escapeHtml(s)}</a>`).join(" ")}</div>
       <div class="plan-skeleton">${escapeHtml(PLAN_TEMPLATES[duration])}</div>
       <div class="row" style="margin-top:10px;">
         <button class="secondary" onclick='addSuggestionToWishlist(${JSON.stringify(d.name)}, ${JSON.stringify(d.spots)})'>やりたいことリストに追加</button>
+        <a href="${mapsLink(d.name)}" target="_blank" rel="noopener" class="tag-toggle" style="text-decoration:none;">🗺️ ${escapeHtml(d.name)}を地図で見る</a>
       </div>
     </div>
   `).join("");
+}
+
+// ---------- Google Maps 連携 ----------
+function mapsLink(query) {
+  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(query);
+}
+
+// ---------- やりたいこと×日程 自動プラン作成 ----------
+function dateRangeList(start, end) {
+  const dates = [];
+  const d = new Date(start + "T00:00:00");
+  const last = new Date(end + "T00:00:00");
+  if (isNaN(d.getTime()) || isNaN(last.getTime()) || d > last) return dates;
+  const cur = new Date(d);
+  while (cur <= last) {
+    dates.push(cur.toISOString().slice(0, 10));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+function renderPlanWishlistCheckboxes() {
+  const el = document.getElementById("planWishlistCheckboxes");
+  if (!el) return;
+  if (!state.wishlist.length) {
+    el.innerHTML = '<div class="empty">まずは「やりたいこと」タブで候補を追加してください</div>';
+    return;
+  }
+  const sorted = [...state.wishlist].sort((a,b) => Object.keys(b.votes).length - Object.keys(a.votes).length);
+  el.innerHTML = sorted.map(w => `
+    <label class="checklist-item" style="margin-bottom:6px;">
+      <input type="checkbox" class="planItemCheck" value="${w.id}" checked>
+      <span>${escapeHtml(w.name)} <span class="badge">${escapeHtml(w.category)}</span></span>
+    </label>`).join("");
+}
+
+async function generateAutoPlan() {
+  const start = document.getElementById("planStartDate").value;
+  const end = document.getElementById("planEndDate").value;
+  const area = document.getElementById("planAreaName").value.trim();
+  if (!start || !end) { alert("出発日と終了日を入力してください"); return; }
+  const dates = dateRangeList(start, end);
+  if (!dates.length) { alert("日程が正しくありません（終了日は出発日以降の日付にしてください）"); return; }
+
+  const checkedIds = Array.from(document.querySelectorAll(".planItemCheck:checked")).map(c => c.value);
+  const items = state.wishlist.filter(w => checkedIds.includes(w.id));
+  if (!items.length) { alert("旅程に入れる「やりたいこと」を1つ以上選んでください"); return; }
+
+  const sortedItems = [...items].sort((a,b) => Object.keys(b.votes).length - Object.keys(a.votes).length);
+  const gourmet = sortedItems.filter(i => i.category === "グルメ");
+  const others = sortedItems.filter(i => i.category !== "グルメ");
+
+  const slotPlan = dates.map((date, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === dates.length - 1 && dates.length > 1;
+    let times;
+    if (dates.length === 1) times = ["10:00", "13:00", "15:00", "18:00"];
+    else if (isFirst) times = ["15:00", "18:00"];
+    else if (isLast) times = ["10:00"];
+    else times = ["10:00", "13:00", "18:00"];
+    return { date, times };
+  });
+
+  const newEntries = [];
+  let gi = 0, oi = 0;
+  slotPlan.forEach(day => {
+    day.times.forEach(time => {
+      const preferGourmet = (time === "13:00" || time === "18:00");
+      let item = null;
+      if (preferGourmet && gi < gourmet.length) { item = gourmet[gi]; gi++; }
+      else if (oi < others.length) { item = others[oi]; oi++; }
+      else if (gi < gourmet.length) { item = gourmet[gi]; gi++; }
+      if (item) {
+        newEntries.push({
+          id: uid(),
+          date: day.date,
+          time,
+          title: item.name,
+          location: item.name,
+          note: (area ? area + "・" : "") + item.category + "（やりたいことから自動追加）"
+        });
+      }
+    });
+  });
+
+  const leftover = [...gourmet.slice(gi), ...others.slice(oi)];
+
+  await syncBeforeWrite();
+  state.itinerary.push(...newEntries);
+  if (area && !state.meta.title) state.meta.title = area;
+  if (!state.meta.startDate) state.meta.startDate = start;
+  if (!state.meta.endDate) state.meta.endDate = end;
+  await saveData();
+  renderAll();
+
+  const resultEl = document.getElementById("planResultInfo");
+  resultEl.innerHTML = `
+    <div class="suggestion-card">
+      <h3>旅程を作成しました</h3>
+      <div class="spots">${newEntries.length}件を行程表に追加しました。${leftover.length ? "日程に入りきらなかった候補: " + leftover.map(l => escapeHtml(l.name)).join("、") : "すべての候補を反映できました。"}</div>
+      <div class="row" style="margin-top:8px;">
+        <button class="secondary" onclick="document.querySelector('.tab-btn[data-tab=itinerary]').click()">行程表を見る</button>
+      </div>
+    </div>`;
 }
 
 async function addSuggestionToWishlist(name, spots) {
@@ -620,6 +741,7 @@ function renderAll() {
   renderBudget();
   renderExpenses();
   renderPacking();
+  renderPlanWishlistCheckboxes();
 }
 
 // ---- 行程表 ----
@@ -663,7 +785,7 @@ function renderItinerary() {
       html += `<div class="list-item">
         <div class="info">
           <div class="title">${i.time ? i.time + " " : ""}${escapeHtml(i.title)}</div>
-          <div class="meta">${i.location ? "📍 " + escapeHtml(i.location) : ""} ${i.note ? "・" + escapeHtml(i.note) : ""}</div>
+          <div class="meta">${i.location ? `📍 <a href="${mapsLink(i.location)}" target="_blank" rel="noopener" style="color:inherit;">${escapeHtml(i.location)}</a>` : ""} ${i.note ? "・" + escapeHtml(i.note) : ""}</div>
         </div>
         <button class="ghost" onclick="removeItinerary('${i.id}')">削除</button>
       </div>`;
@@ -716,7 +838,7 @@ function renderWishlist() {
     return `<div class="list-item">
       <div class="info">
         <div class="title"><span class="badge">${escapeHtml(w.category)}</span>${escapeHtml(w.name)}</div>
-        <div class="meta">${w.note ? escapeHtml(w.note) : ""} ${voteCount ? "・ 👍 " + voteCount : ""}</div>
+        <div class="meta">${w.note ? escapeHtml(w.note) : ""} ${voteCount ? "・ 👍 " + voteCount : ""} ・ <a href="${mapsLink(w.name)}" target="_blank" rel="noopener">🗺️ 地図</a></div>
       </div>
       <div class="row">
         ${voteButtons}
