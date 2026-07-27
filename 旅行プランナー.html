@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>旅行プランナー</title>
+<style>
+  :root {
+    --accent: #2f6f5e;
+    --accent-light: #e7f2ee;
+    --bg: #faf8f4;
+    --card: #ffffff;
+    --text: #2b2b2b;
+    --sub: #767267;
+    --border: #e6e1d8;
+    --danger: #b6543c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: 60px;
+  }
+  header {
+    background: var(--accent);
+    color: white;
+    padding: 16px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { margin: 0 0 4px; font-size: 1.3rem; }
+  header .sub { font-size: 0.8rem; opacity: 0.85; }
+  .container { max-width: 720px; margin: 0 auto; padding: 12px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .card h2 { font-size: 1.05rem; margin: 0 0 12px; display: flex; align-items: center; gap: 6px; }
+  .tabs { display: flex; gap: 4px; overflow-x: auto; padding: 8px 12px 0; max-width: 720px; margin: 0 auto; }
+  .tab-btn {
+    flex: 0 0 auto; background: none; border: none; padding: 8px 12px;
+    font-size: 0.85rem; color: var(--sub); border-bottom: 3px solid transparent; cursor: pointer; white-space: nowrap;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  input, select, textarea {
+    font-family: inherit; font-size: 0.9rem; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text);
+  }
+  input:focus, select:focus, textarea:focus { outline: 1.5px solid var(--accent); }
+  button {
+    font-family: inherit; cursor: pointer; border: none; border-radius: 8px;
+    padding: 8px 14px; font-size: 0.85rem; background: var(--accent); color: white;
+  }
+  button.secondary { background: var(--accent-light); color: var(--accent); }
+  button.ghost { background: transparent; color: var(--sub); padding: 4px 8px; }
+  button.danger { background: var(--danger); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .grid-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .grid-form input, .grid-form select { width: 100%; }
+  .full { grid-column: 1 / -1; }
+  .list-item {
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; background: #fffdfa;
+  }
+  .list-item .info { flex: 1; }
+  .list-item .info .title { font-weight: 600; }
+  .list-item .info .meta { font-size: 0.78rem; color: var(--sub); margin-top: 2px; }
+  .badge {
+    display: inline-block; background: var(--accent-light); color: var(--accent);
+    font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; margin-right: 4px;
+  }
+  .day-heading {
+    font-weight: 700; color: var(--accent); margin: 16px 0 6px; font-size: 0.95rem;
+    border-bottom: 2px solid var(--accent-light); padding-bottom: 4px;
+  }
+  .empty { color: var(--sub); font-size: 0.85rem; padding: 12px 0; text-align: center; }
+  .share-box { background: var(--accent-light); border-radius: 10px; padding: 12px; font-size: 0.85rem; }
+  .share-code {
+    font-family: monospace; font-size: 1rem; background: #fff; padding: 6px 10px; border-radius: 6px;
+    border: 1px dashed var(--accent); display: inline-block; margin: 6px 0; word-break: break-all;
+  }
+  .status { font-size: 0.75rem; color: var(--sub); text-align: right; }
+  .vote-btn { background: var(--accent-light); color: var(--accent); font-size: 0.78rem; padding: 4px 10px; }
+  .vote-btn.voted { background: var(--accent); color: white; }
+  .checklist-item { display: flex; align-items: center; gap: 8px; }
+  .checklist-item input[type=checkbox] { width: 18px; height: 18px; }
+  .checklist-item.checked .title { text-decoration: line-through; color: var(--sub); }
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px;
+  }
+  .modal { background: white; border-radius: 14px; padding: 20px; max-width: 400px; width: 100%; }
+  .settle-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+  .total-line { font-weight: 700; font-size: 1.05rem; margin-top: 8px; }
+  .name-tag { background: #efe9dd; border-radius: 6px; padding: 1px 6px; font-size: 0.78rem; }
+  .person-choice { display: flex; gap: 10px; margin-bottom: 16px; }
+  .person-choice button { flex: 1; padding: 14px; font-size: 1rem; background: var(--accent-light); color: var(--accent); }
+  .tag-toggle {
+    display: inline-block; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
+    background: #fff; font-size: 0.82rem; cursor: pointer; margin: 3px 4px 3px 0; color: var(--sub);
+  }
+  .tag-toggle.selected { background: var(--accent); color: white; border-color: var(--accent); }
+  .checkbox-row { display: flex; gap: 14px; align-items: center; margin: 6px 0; }
+  .checkbox-row label { font-size: 0.85rem; display: flex; align-items: center; gap: 4px; }
+  .suggestion-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 10px; background: #fffdfa; }
+  .suggestion-card h3 { margin: 0 0 4px; font-size: 1rem; color: var(--accent); }
+  .suggestion-card .score { font-size: 0.75rem; color: var(--sub); margin-bottom: 6px; }
+  .suggestion-card .spots { font-size: 0.85rem; margin: 6px 0; }
+  .suggestion-card .plan-skeleton { font-size: 0.82rem; color: var(--sub); margin-top: 6px; white-space: pre-line; }
+
+  @media (max-width: 480px) {
+    .grid-form { grid-template-columns: 1fr; }
+    header h1 { font-size: 1.15rem; }
+    .card { padding: 12px; }
+    .tabs { padding: 6px 8px 0; }
+    .tab-btn { font-size: 0.8rem; padding: 8px 9px; }
+    button { padding: 10px 14px; font-size: 0.9rem; }
+  }
+</style>
+</head>
+<body>
+
+<div id="setupModal" class="modal-overlay" style="display:none;">
+  <div class="modal">
+    <h2 style="margin-top:0;">旅行プランナー</h2>
+    <div id="setupStep1">
+      <p style="font-size:0.9rem; color:var(--sub);">あなたはどちらですか？</p>
+      <div class="person-choice">
+        <button onclick="chooseMe('碩紀')">碩紀</button>
+        <button onclick="chooseMe('ありさ')">ありさ</button>
+      </div>
+    </div>
+    <div id="setupStep2" style="display:none;">
+      <p style="font-size:0.9rem; color:var(--sub);">新しい旅行を作るか、相手から共有された旅行に参加します。</p>
+      <div class="row" style="margin-bottom:10px;">
+        <button onclick="createNewTrip()">新しい旅行を作成</button>
+        <button class="secondary" onclick="showJoinInput()">共有コードで参加</button>
+      </div>
+      <div id="joinInputBox" style="display:none;">
+        <input id="joinCodeInput" placeholder="共有コードを貼り付け" style="width:100%; margin-bottom:8px;">
+        <button onclick="joinTrip()">参加する</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<header>
+  <h1 id="tripTitleDisplay">旅行プランナー</h1>
+  <div class="sub" id="headerSub">読み込み中...</div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="suggest">プラン提案</button>
+  <button class="tab-btn" data-tab="itinerary">行程表</button>
+  <button class="tab-btn" data-tab="wishlist">やりたいこと</button>
+  <button class="tab-btn" data-tab="budget">予算</button>
+  <button class="tab-btn" data-tab="expenses">立て替え・精算</button>
+  <button class="tab-btn" data-tab="packing">持ち物</button>
+  <button class="tab-btn" data-tab="share">共有・設定</button>
+</div>
+
+<div class="container">
+
+  <!-- プラン提案 -->
+  <div class="tab-panel active" id="panel-suggest">
+    <div class="card">
+      <h2>おおまかな希望を教えてください</h2>
+      <div class="row" style="margin-bottom:6px;">
+        <strong style="font-size:0.85rem;">行き先</strong>
+      </div>
+      <div class="row" id="destTypeRow"></div>
+
+      <div class="row" style="margin:12px 0 6px;">
+        <strong style="font-size:0.85rem;">日数</strong>
+      </div>
+      <select id="sugDuration" style="width:100%;">
+        <option value="daytrip">日帰り</option>
+        <option value="1n2d" selected>1泊2日</option>
+        <option value="2n3d">2泊3日</option>
+        <option value="3n4d">3泊4日</option>
+        <option value="4n+">4泊以上</option>
+      </select>
+
+      <div class="row" style="margin:12px 0 6px;">
+        <strong style="font-size:0.85rem;">予算感</strong>
+      </div>
+      <select id="sugBudget" style="width:100%;">
+        <option value="1">格安に抑えたい</option>
+        <option value="2" selected>標準的</option>
+        <option value="3">少し贅沢</option>
+        <option value="4">贅沢したい</option>
+      </select>
+
+      <div class="row" style="margin:12px 0 6px;">
+        <strong style="font-size:0.85rem;">雰囲気・やりたいこと（複数選択可）</strong>
+      </div>
+      <div id="styleTagRow"></div>
+
+      <div style="margin-top:14px;">
+        <button onclick="generateSuggestions()">プランを提案する</button>
+      </div>
+    </div>
+    <div id="suggestionResults"></div>
+  </div>
+
+  <!-- 行程表 -->
+  <div class="tab-panel" id="panel-itinerary">
+    <div class="card">
+      <h2>予定を追加</h2>
+      <div class="grid-form">
+        <input type="date" id="itDate">
+        <input type="time" id="itTime">
+        <input type="text" id="itTitle" placeholder="やること（例: チェックイン）" class="full">
+        <input type="text" id="itLocation" placeholder="場所">
+        <input type="text" id="itNote" placeholder="メモ">
+      </div>
+      <button onclick="addItinerary()">追加</button>
+    </div>
+    <div id="itineraryList"></div>
+  </div>
+
+  <!-- やりたいことリスト -->
+  <div class="tab-panel" id="panel-wishlist">
+    <div class="card">
+      <h2>候補を追加</h2>
+      <div class="grid-form">
+        <input type="text" id="wName" placeholder="名前（場所・お店・アクティビティ）" class="full">
+        <select id="wCategory">
+          <option value="観光">観光</option>
+          <option value="グルメ">グルメ</option>
+          <option value="体験">体験</option>
+          <option value="買い物">買い物</option>
+          <option value="その他">その他</option>
+        </select>
+        <input type="text" id="wNote" placeholder="メモ・URLなど">
+      </div>
+      <button onclick="addWishlist()">追加</button>
+    </div>
+    <div id="wishlistList"></div>
+  </div>
+
+  <!-- 予算 -->
+  <div class="tab-panel" id="panel-budget">
+    <div class="card">
+      <h2>予算項目を追加</h2>
+      <div class="grid-form">
+        <input type="text" id="bName" placeholder="項目（例: 宿泊費）">
+        <input type="number" id="bPlanned" placeholder="予算額（円）">
+      </div>
+      <button onclick="addBudget()">追加</button>
+    </div>
+    <div class="card" id="budgetSummary"></div>
+    <div id="budgetList"></div>
+  </div>
+
+  <!-- 立て替え・精算 -->
+  <div class="tab-panel" id="panel-expenses">
+    <div class="card">
+      <h2>立て替えを記録</h2>
+      <div class="grid-form">
+        <input type="date" id="exDate">
+        <input type="number" id="exAmount" placeholder="金額（円）">
+        <input type="text" id="exDesc" placeholder="内容（例: 夕食代）" class="full">
+      </div>
+      <div class="row" style="margin-bottom:6px;">
+        <span style="font-size:0.82rem; color:var(--sub);">支払った人:</span>
+        <select id="exPayer">
+          <option value="碩紀">碩紀</option>
+          <option value="ありさ">ありさ</option>
+        </select>
+      </div>
+      <div class="checkbox-row">
+        <span style="font-size:0.82rem; color:var(--sub);">割り勘する人:</span>
+        <label><input type="checkbox" id="exSplitHiroki" checked> 碩紀</label>
+        <label><input type="checkbox" id="exSplitArisa" checked> ありさ</label>
+      </div>
+      <button onclick="addExpense()">記録</button>
+    </div>
+    <div class="card">
+      <h2>精算結果</h2>
+      <div id="settlementBox"></div>
+    </div>
+    <div id="expenseList"></div>
+  </div>
+
+  <!-- 持ち物 -->
+  <div class="tab-panel" id="panel-packing">
+    <div class="card">
+      <h2>持ち物を追加</h2>
+      <div class="grid-form">
+        <input type="text" id="pName" placeholder="持ち物・準備すること" class="full">
+        <select id="pAssignee">
+          <option value="">担当未定</option>
+          <option value="碩紀">碩紀</option>
+          <option value="ありさ">ありさ</option>
+          <option value="共通">共通</option>
+        </select>
+      </div>
+      <button onclick="addPacking()">追加</button>
+    </div>
+    <div id="packingList"></div>
+  </div>
+
+  <!-- 共有・設定 -->
+  <div class="tab-panel" id="panel-share">
+    <div class="card">
+      <h2>旅行の基本情報</h2>
+      <div class="grid-form">
+        <input type="text" id="tripTitleInput" placeholder="旅行名（例: 沖縄旅行）" class="full">
+        <input type="date" id="tripStart">
+        <input type="date" id="tripEnd">
+      </div>
+      <button onclick="saveTripMeta()">保存</button>
+    </div>
+    <div class="card">
+      <h2>相手と共有</h2>
+      <p style="font-size:0.85rem; color:var(--sub);">このHTMLファイル自体をありさに送り、下の共有コードを伝えてください。ありさはファイルを開いて「共有コードで参加」から入力すれば、同じ旅行データを見たり編集したりできます。</p>
+      <div class="share-box">
+        共有コード:
+        <div class="share-code" id="shareCodeDisplay">-</div>
+        <div class="row">
+          <button class="secondary" onclick="copyShareCode()">コードをコピー</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>あなた</h2>
+      <div class="row">
+        <span id="whoAmIDisplay" style="font-weight:600;"></span>
+        <button class="ghost" onclick="switchPerson()">切り替え</button>
+      </div>
+    </div>
+    <div class="status" id="syncStatus"></div>
+    <div class="row" style="margin-top:10px;">
+      <button class="secondary" onclick="manualSync()">今すぐ同期</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const BLOB_BASE = "https://jsonblob.com/api/jsonBlob/";
+const PEOPLE = ["碩紀", "ありさ"];
+
+let state = null;
+let blobId = localStorage.getItem("tripBlobId");
+let myName = localStorage.getItem("myName");
+
+function uid() { return Math.random().toString(36).slice(2, 10); }
+
+function emptyState() {
+  return {
+    meta: { title: "", startDate: "", endDate: "" },
+    itinerary: [],
+    wishlist: [],
+    budgetCategories: [],
+    expenses: [],
+    packing: [],
+    updatedAt: Date.now()
+  };
+}
+
+// ---------- 提案エンジン用データ ----------
+const STYLE_TAGS = ["自然", "グルメ", "温泉", "都市観光", "歴史・文化", "アクティビティ", "のんびり", "海"];
+
+const DESTINATIONS = [
+  { name: "箱根・湯河原（神奈川）", domestic: true, budget: [2,3], styles: ["温泉","自然","のんびり"], spots: ["箱根神社", "大涌谷", "温泉旅館で貸切風呂", "彫刻の森美術館"] },
+  { name: "軽井沢（長野）", domestic: true, budget: [2,3,4], styles: ["自然","のんびり","グルメ"], spots: ["旧軽井沢銀座", "雲場池", "アウトレットモール", "地元パン屋巡り"] },
+  { name: "京都", domestic: true, budget: [2,3,4], styles: ["歴史・文化","グルメ","都市観光"], spots: ["清水寺", "伏見稲荷大社", "町家カフェ巡り", "嵐山散策"] },
+  { name: "金沢（石川）", domestic: true, budget: [2,3], styles: ["歴史・文化","グルメ","都市観光"], spots: ["兼六園", "近江町市場で海鮮丼", "ひがし茶屋街", "金沢21世紀美術館"] },
+  { name: "熱海（静岡）", domestic: true, budget: [1,2,3], styles: ["温泉","海","のんびり"], spots: ["熱海サンビーチ", "温泉旅館", "熱海プリン", "MOA美術館"] },
+  { name: "伊豆（静岡）", domestic: true, budget: [1,2,3], styles: ["海","自然","のんびり"], spots: ["城ヶ崎海岸", "地魚料理", "河津七滝", "温泉宿"] },
+  { name: "那須・塩原（栃木）", domestic: true, budget: [2,3], styles: ["自然","温泉","のんびり"], spots: ["那須どうぶつ王国", "殺生石", "温泉旅館", "牧場カフェ"] },
+  { name: "沖縄", domestic: true, budget: [2,3,4], styles: ["海","自然","グルメ","アクティビティ"], spots: ["美ら海水族館", "青の洞窟シュノーケリング", "国際通り", "古宇利島"] },
+  { name: "北海道（札幌・小樽）", domestic: true, budget: [3,4], styles: ["グルメ","自然","都市観光"], spots: ["小樽運河", "海鮮丼・寿司", "円山動物園", "スープカレー巡り"] },
+  { name: "鎌倉（神奈川）", domestic: true, budget: [1,2], styles: ["歴史・文化","海","のんびり"], spots: ["鶴岡八幡宮", "江ノ電沿いカフェ", "長谷寺", "由比ヶ浜"] },
+  { name: "日光（栃木）", domestic: true, budget: [1,2,3], styles: ["自然","歴史・文化","のんびり"], spots: ["日光東照宮", "中禅寺湖", "華厳の滝", "湯波料理"] },
+  { name: "白浜・南紀（和歌山）", domestic: true, budget: [2,3], styles: ["温泉","海","のんびり"], spots: ["白良浜", "アドベンチャーワールド", "温泉旅館", "とれとれ市場"] },
+  { name: "台湾（台北）", domestic: false, budget: [2,3], styles: ["グルメ","都市観光","歴史・文化"], spots: ["九份", "夜市グルメ巡り", "故宮博物院", "台北101"] },
+  { name: "韓国（ソウル）", domestic: false, budget: [2,3], styles: ["グルメ","都市観光","アクティビティ"], spots: ["明洞・カフェ巡り", "景福宮", "漢江ピクニック", "焼肉・韓国料理"] },
+  { name: "グアム", domestic: false, budget: [3,4], styles: ["海","のんびり","アクティビティ"], spots: ["タモン湾ビーチ", "マリンアクティビティ", "リゾートホテルステイ", "ショッピング"] },
+  { name: "ハワイ（オアフ島）", domestic: false, budget: [4], styles: ["海","のんびり","グルメ","アクティビティ"], spots: ["ワイキキビーチ", "ダイヤモンドヘッド", "ロコモコ・パンケーキ", "ノースショア"] },
+
+  // ▼ 2026年7月調査: SNS・話題性から追加した候補（トレンド反映）
+  { name: "山形県", domestic: true, budget: [1,2,3], styles: ["自然","歴史・文化","のんびり"], spots: ["銀山温泉", "山寺（立石寺）", "蔵王樹氷（冬季）", "さくらんぼ狩り"], trend: "ナショナルジオグラフィック『2026年に行くべき世界の旅行先25選』に日本から唯一選出され話題" },
+  { name: "沖縄・首里城周辺", domestic: true, budget: [2,3,4], styles: ["歴史・文化","海","のんびり"], spots: ["首里城公園", "国際通り", "識名園", "おきなわ屋台村"], trend: "首里城正殿の復元が2026年秋に完成予定で再訪の話題が急増" },
+  { name: "万博記念公園（大阪）", domestic: true, budget: [1,2], styles: ["自然","都市観光"], spots: ["太陽の塔", "自然文化園の花畑", "国立民族学博物館", "EXPOCITY"], trend: "季節の花と太陽の塔がインスタ映え散策スポットとして継続的に話題" },
+  { name: "福島県（会津・磐梯）", domestic: true, budget: [1,2], styles: ["自然","歴史・文化","のんびり"], spots: ["大内宿", "五色沼", "鶴ヶ城", "地酒・ご当地グルメ"], trend: "2026年4〜6月『ふくしまデスティネーションキャンペーン』開催で注目" },
+  { name: "ドバイ（UAE）", domestic: false, budget: [3,4], styles: ["都市観光","アクティビティ"], spots: ["バージュ・カリファ", "デザートサファリ", "ドバイモール", "ビーチリゾート"], trend: "SNS投稿数世界一の都市。バージュ・カリファは世界で最もタグ付けされるランドマーク" },
+  { name: "バルセロナ（スペイン）", domestic: false, budget: [3,4], styles: ["都市観光","グルメ","歴史・文化"], spots: ["サグラダ・ファミリア", "グエル公園", "ゴシック地区散策", "バル巡り"], trend: "2026年トレンド旅行先の上位。Google検索需要でも世界トップクラス" },
+  { name: "バンコク（タイ）", domestic: false, budget: [1,2], styles: ["グルメ","都市観光"], spots: ["ワット・アルン", "屋台グルメ巡り", "チャトゥチャック市場", "ルーフトップバー"], trend: "2026年の予約数トレンド旅行先ランキングで上位" },
+  { name: "ジョージア（トビリシ）", domestic: false, budget: [2,3], styles: ["自然","歴史・文化"], spots: ["洞窟修道院", "8000年のワイナリー巡り", "トビリシ旧市街", "カズベキ山の絶景"], trend: "洞窟修道院とワイン文化がSNSでバイラルになり注目度上昇中" }
+];
+
+const PLAN_TEMPLATES = {
+  daytrip: "日帰り: 午前到着→観光1〜2箇所→ランチ→午後観光/アクティビティ→お土産→帰宅",
+  "1n2d": "1日目: 到着→観光→夕食→宿泊\n2日目: 朝食→観光/アクティビティ→ランチ→帰路",
+  "2n3d": "1日目: 到着→軽く観光→夕食→宿泊\n2日目: メイン観光・アクティビティ終日→夕食→宿泊\n3日目: 朝ゆっくり→軽く観光/お土産→帰路",
+  "3n4d": "1日目: 到着→周辺散策→宿泊\n2日目: メイン観光終日→宿泊\n3日目: グルメ・アクティビティ中心→宿泊\n4日目: 朝ゆっくり→お土産→帰路",
+  "4n+": "余裕のある日程。エリアを2〜3箇所に分けて周遊し、移動日と観光日をバランス良く配置するのがおすすめ。"
+};
+
+let selectedStyles = new Set();
+let selectedDestType = "domestic";
+
+function renderStaticSuggestForm() {
+  const destRow = document.getElementById("destTypeRow");
+  const options = [["domestic","国内"],["overseas","海外"],["either","どちらでも"]];
+  destRow.innerHTML = options.map(([val,label]) =>
+    `<span class="tag-toggle ${selectedDestType===val?'selected':''}" onclick="setDestType('${val}')">${label}</span>`
+  ).join("");
+
+  const styleRow = document.getElementById("styleTagRow");
+  styleRow.innerHTML = STYLE_TAGS.map(tag =>
+    `<span class="tag-toggle ${selectedStyles.has(tag)?'selected':''}" onclick="toggleStyle('${tag}')">${tag}</span>`
+  ).join("");
+}
+
+function setDestType(val) { selectedDestType = val; renderStaticSuggestForm(); }
+function toggleStyle(tag) {
+  if (selectedStyles.has(tag)) selectedStyles.delete(tag);
+  else selectedStyles.add(tag);
+  renderStaticSuggestForm();
+}
+
+function generateSuggestions() {
+  const duration = document.getElementById("sugDuration").value;
+  const budget = parseInt(document.getElementById("sugBudget").value);
+
+  const scored = DESTINATIONS.map(d => {
+    let score = 0;
+    if (selectedDestType === "domestic" && d.domestic) score += 3;
+    if (selectedDestType === "overseas" && !d.domestic) score += 3;
+    if (selectedDestType === "either") score += 1;
+    if (selectedDestType === "domestic" && !d.domestic) score -= 5;
+    if (selectedDestType === "overseas" && d.domestic) score -= 5;
+    selectedStyles.forEach(tag => { if (d.styles.includes(tag)) score += 2; });
+    if (d.budget.includes(budget)) score += 2;
+    else score -= Math.min(...d.budget.map(b => Math.abs(b - budget)));
+    return { d, score };
+  }).sort((a,b) => b.score - a.score);
+
+  const top = scored.slice(0, 4).filter(s => s.score > -3);
+  const el = document.getElementById("suggestionResults");
+  if (!top.length) {
+    el.innerHTML = '<div class="empty">条件に合う候補が見つかりませんでした。条件を減らして試してください。</div>';
+    return;
+  }
+  el.innerHTML = top.map(({d, score}) => `
+    <div class="suggestion-card">
+      <h3>${escapeHtml(d.name)}</h3>
+      <div class="score">マッチ度スコア: ${score} ・ ${d.domestic ? "国内" : "海外"}</div>
+      ${d.trend ? `<div class="spots" style="color:var(--accent);">🔥 ${escapeHtml(d.trend)}</div>` : ""}
+      <div class="spots">${d.spots.map(s => `<span class="badge">${escapeHtml(s)}</span>`).join(" ")}</div>
+      <div class="plan-skeleton">${escapeHtml(PLAN_TEMPLATES[duration])}</div>
+      <div class="row" style="margin-top:10px;">
+        <button class="secondary" onclick='addSuggestionToWishlist(${JSON.stringify(d.name)}, ${JSON.stringify(d.spots)})'>やりたいことリストに追加</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function addSuggestionToWishlist(name, spots) {
+  await syncBeforeWrite();
+  state.wishlist.push({ id: uid(), name: name, category: "観光", note: "プラン提案から追加", votes: {} });
+  spots.forEach(sp => {
+    state.wishlist.push({ id: uid(), name: sp, category: "観光", note: name + " のおすすめスポット", votes: {} });
+  });
+  await saveData();
+  renderAll();
+  alert("やりたいことリストに追加しました");
+}
+
+// ---------- Setup flow ----------
+window.addEventListener("load", () => {
+  renderStaticSuggestForm();
+  if (!myName || !blobId) {
+    document.getElementById("setupModal").style.display = "flex";
+  } else {
+    initApp();
+  }
+});
+
+function chooseMe(name) {
+  myName = name;
+  localStorage.setItem("myName", myName);
+  if (blobId) {
+    document.getElementById("setupModal").style.display = "none";
+    initApp();
+  } else {
+    document.getElementById("setupStep1").style.display = "none";
+    document.getElementById("setupStep2").style.display = "block";
+  }
+}
+
+function switchPerson() {
+  const other = PEOPLE.find(p => p !== myName) || PEOPLE[0];
+  if (confirm("「" + other + "」に切り替えますか？")) {
+    myName = other;
+    localStorage.setItem("myName", myName);
+    renderAll();
+    document.getElementById("whoAmIDisplay").textContent = myName;
+  }
+}
+
+function showJoinInput() { document.getElementById("joinInputBox").style.display = "block"; }
+
+async function createNewTrip() {
+  state = emptyState();
+  try {
+    const res = await fetch(BLOB_BASE, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(state)
+    });
+    const loc = res.headers.get("Location") || res.headers.get("location");
+    blobId = loc ? loc.split("/").pop() : uid();
+    localStorage.setItem("tripBlobId", blobId);
+    document.getElementById("setupModal").style.display = "none";
+    initApp();
+  } catch (e) {
+    alert("旅行の作成に失敗しました。インターネット接続を確認してください。\n" + e);
+  }
+}
+
+function joinTrip() {
+  const code = document.getElementById("joinCodeInput").value.trim();
+  if (!code) { alert("共有コードを入力してください"); return; }
+  blobId = code;
+  localStorage.setItem("tripBlobId", blobId);
+  document.getElementById("setupModal").style.display = "none";
+  initApp();
+}
+
+// ---------- Core sync ----------
+async function loadData() {
+  const res = await fetch(BLOB_BASE + blobId, { headers: { "Accept": "application/json" } });
+  if (!res.ok) throw new Error("読み込み失敗 (" + res.status + ")");
+  state = await res.json();
+}
+
+async function saveData() {
+  state.updatedAt = Date.now();
+  const res = await fetch(BLOB_BASE + blobId, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state)
+  });
+  if (!res.ok) throw new Error("保存失敗 (" + res.status + ")");
+}
+
+async function syncBeforeWrite() {
+  try { await loadData(); } catch (e) { console.warn(e); }
+}
+
+async function manualSync() {
+  setSyncStatus("同期中...");
+  try {
+    await loadData();
+    renderAll();
+    setSyncStatus("同期完了 " + new Date().toLocaleTimeString());
+  } catch (e) {
+    setSyncStatus("同期エラー");
+  }
+}
+
+function setSyncStatus(text) {
+  const el = document.getElementById("syncStatus");
+  if (el) el.textContent = text;
+}
+
+async function initApp() {
+  document.getElementById("whoAmIDisplay").textContent = myName;
+  document.getElementById("shareCodeDisplay").textContent = blobId;
+  setSyncStatus("読み込み中...");
+  try { await loadData(); } catch (e) { state = emptyState(); }
+  renderAll();
+  setSyncStatus("最終同期: " + new Date().toLocaleTimeString());
+  setInterval(async () => {
+    try { await loadData(); renderAll(); setSyncStatus("最終同期: " + new Date().toLocaleTimeString()); }
+    catch (e) { /* silent */ }
+  }, 20000);
+}
+
+function copyShareCode() {
+  navigator.clipboard.writeText(blobId).then(() => alert("共有コードをコピーしました"));
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+// ---------- Render ----------
+function renderAll() {
+  document.getElementById("tripTitleDisplay").textContent = state.meta.title || "旅行プランナー";
+  let sub = "";
+  if (state.meta.startDate) sub += state.meta.startDate;
+  if (state.meta.endDate) sub += " 〜 " + state.meta.endDate;
+  document.getElementById("headerSub").textContent = sub || "碩紀 & ありさ の旅行計画";
+  document.getElementById("tripTitleInput").value = state.meta.title || "";
+  document.getElementById("tripStart").value = state.meta.startDate || "";
+  document.getElementById("tripEnd").value = state.meta.endDate || "";
+
+  renderItinerary();
+  renderWishlist();
+  renderBudget();
+  renderExpenses();
+  renderPacking();
+}
+
+// ---- 行程表 ----
+async function addItinerary() {
+  const date = document.getElementById("itDate").value;
+  const time = document.getElementById("itTime").value;
+  const title = document.getElementById("itTitle").value.trim();
+  const location = document.getElementById("itLocation").value.trim();
+  const note = document.getElementById("itNote").value.trim();
+  if (!title) { alert("やることを入力してください"); return; }
+  await syncBeforeWrite();
+  state.itinerary.push({ id: uid(), date, time, title, location, note });
+  await saveData();
+  document.getElementById("itTitle").value = "";
+  document.getElementById("itLocation").value = "";
+  document.getElementById("itNote").value = "";
+  renderAll();
+}
+
+async function removeItinerary(id) {
+  await syncBeforeWrite();
+  state.itinerary = state.itinerary.filter(i => i.id !== id);
+  await saveData();
+  renderAll();
+}
+
+function renderItinerary() {
+  const el = document.getElementById("itineraryList");
+  if (!state.itinerary.length) { el.innerHTML = '<div class="empty">まだ予定がありません</div>'; return; }
+  const sorted = [...state.itinerary].sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
+  const byDate = {};
+  sorted.forEach(i => {
+    const key = i.date || "日付未定";
+    byDate[key] = byDate[key] || [];
+    byDate[key].push(i);
+  });
+  let html = "";
+  Object.keys(byDate).forEach(date => {
+    html += `<div class="day-heading">${date}</div>`;
+    byDate[date].forEach(i => {
+      html += `<div class="list-item">
+        <div class="info">
+          <div class="title">${i.time ? i.time + " " : ""}${escapeHtml(i.title)}</div>
+          <div class="meta">${i.location ? "📍 " + escapeHtml(i.location) : ""} ${i.note ? "・" + escapeHtml(i.note) : ""}</div>
+        </div>
+        <button class="ghost" onclick="removeItinerary('${i.id}')">削除</button>
+      </div>`;
+    });
+  });
+  el.innerHTML = html;
+}
+
+// ---- やりたいことリスト ----
+async function addWishlist() {
+  const name = document.getElementById("wName").value.trim();
+  const category = document.getElementById("wCategory").value;
+  const note = document.getElementById("wNote").value.trim();
+  if (!name) { alert("名前を入力してください"); return; }
+  await syncBeforeWrite();
+  state.wishlist.push({ id: uid(), name, category, note, votes: {} });
+  await saveData();
+  document.getElementById("wName").value = "";
+  document.getElementById("wNote").value = "";
+  renderAll();
+}
+
+async function toggleVote(id, person) {
+  await syncBeforeWrite();
+  const item = state.wishlist.find(w => w.id === id);
+  if (!item) return;
+  if (item.votes[person]) delete item.votes[person];
+  else item.votes[person] = true;
+  await saveData();
+  renderAll();
+}
+
+async function removeWishlist(id) {
+  await syncBeforeWrite();
+  state.wishlist = state.wishlist.filter(w => w.id !== id);
+  await saveData();
+  renderAll();
+}
+
+function renderWishlist() {
+  const el = document.getElementById("wishlistList");
+  if (!state.wishlist.length) { el.innerHTML = '<div class="empty">まだ候補がありません</div>'; return; }
+  const sorted = [...state.wishlist].sort((a,b) => Object.keys(b.votes).length - Object.keys(a.votes).length);
+  el.innerHTML = sorted.map(w => {
+    const voteCount = Object.keys(w.votes).length;
+    const voteButtons = PEOPLE.map(p => {
+      const voted = !!w.votes[p];
+      return `<button class="vote-btn ${voted ? 'voted' : ''}" onclick="toggleVote('${w.id}','${p}')">${p}${voted ? ' ✓' : ''}</button>`;
+    }).join("");
+    return `<div class="list-item">
+      <div class="info">
+        <div class="title"><span class="badge">${escapeHtml(w.category)}</span>${escapeHtml(w.name)}</div>
+        <div class="meta">${w.note ? escapeHtml(w.note) : ""} ${voteCount ? "・ 👍 " + voteCount : ""}</div>
+      </div>
+      <div class="row">
+        ${voteButtons}
+        <button class="ghost" onclick="removeWishlist('${w.id}')">削除</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ---- 予算 ----
+async function addBudget() {
+  const name = document.getElementById("bName").value.trim();
+  const planned = parseFloat(document.getElementById("bPlanned").value) || 0;
+  if (!name) { alert("項目名を入力してください"); return; }
+  await syncBeforeWrite();
+  state.budgetCategories.push({ id: uid(), name, planned });
+  await saveData();
+  document.getElementById("bName").value = "";
+  document.getElementById("bPlanned").value = "";
+  renderAll();
+}
+
+async function removeBudget(id) {
+  await syncBeforeWrite();
+  state.budgetCategories = state.budgetCategories.filter(b => b.id !== id);
+  await saveData();
+  renderAll();
+}
+
+function renderBudget() {
+  const totalPlanned = state.budgetCategories.reduce((s,b) => s + b.planned, 0);
+  const totalActual = state.expenses.reduce((s,e) => s + e.amount, 0);
+  document.getElementById("budgetSummary").innerHTML = `
+    <h2>サマリー</h2>
+    <div class="settle-row"><span>予算合計</span><span>¥${totalPlanned.toLocaleString()}</span></div>
+    <div class="settle-row"><span>実際の支出合計</span><span>¥${totalActual.toLocaleString()}</span></div>
+    <div class="total-line" style="color:${totalActual > totalPlanned ? 'var(--danger)' : 'var(--accent)'}">
+      差額: ¥${(totalPlanned - totalActual).toLocaleString()}
+    </div>`;
+  const el = document.getElementById("budgetList");
+  if (!state.budgetCategories.length) { el.innerHTML = '<div class="empty">まだ予算項目がありません</div>'; return; }
+  el.innerHTML = state.budgetCategories.map(b => `
+    <div class="list-item">
+      <div class="info">
+        <div class="title">${escapeHtml(b.name)}</div>
+        <div class="meta">予算 ¥${b.planned.toLocaleString()}</div>
+      </div>
+      <button class="ghost" onclick="removeBudget('${b.id}')">削除</button>
+    </div>`).join("");
+}
+
+// ---- 立て替え・精算 ----
+async function addExpense() {
+  const date = document.getElementById("exDate").value;
+  const amount = parseFloat(document.getElementById("exAmount").value);
+  const desc = document.getElementById("exDesc").value.trim();
+  const payer = document.getElementById("exPayer").value;
+  const splitWith = [];
+  if (document.getElementById("exSplitHiroki").checked) splitWith.push("碩紀");
+  if (document.getElementById("exSplitArisa").checked) splitWith.push("ありさ");
+  if (!amount || !desc) { alert("金額と内容を入力してください"); return; }
+  if (!splitWith.length) { alert("割り勘する人を1人以上選んでください"); return; }
+  await syncBeforeWrite();
+  state.expenses.push({ id: uid(), date, amount, desc, payer, splitWith });
+  await saveData();
+  document.getElementById("exAmount").value = "";
+  document.getElementById("exDesc").value = "";
+  renderAll();
+}
+
+async function removeExpense(id) {
+  await syncBeforeWrite();
+  state.expenses = state.expenses.filter(e => e.id !== id);
+  await saveData();
+  renderAll();
+}
+
+function computeSettlement() {
+  const balance = {};
+  state.expenses.forEach(e => {
+    balance[e.payer] = (balance[e.payer] || 0) + e.amount;
+    const share = e.amount / e.splitWith.length;
+    e.splitWith.forEach(p => { balance[p] = (balance[p] || 0) - share; });
+  });
+  const creditors = [];
+  const debtors = [];
+  Object.entries(balance).forEach(([name, amt]) => {
+    if (amt > 0.5) creditors.push({ name, amt });
+    else if (amt < -0.5) debtors.push({ name, amt: -amt });
+  });
+  creditors.sort((a,b) => b.amt - a.amt);
+  debtors.sort((a,b) => b.amt - a.amt);
+  const transactions = [];
+  let i = 0, j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const pay = Math.min(debtors[i].amt, creditors[j].amt);
+    transactions.push({ from: debtors[i].name, to: creditors[j].name, amount: Math.round(pay) });
+    debtors[i].amt -= pay;
+    creditors[j].amt -= pay;
+    if (debtors[i].amt < 0.5) i++;
+    if (creditors[j].amt < 0.5) j++;
+  }
+  return { balance, transactions };
+}
+
+function renderExpenses() {
+  const { balance, transactions } = computeSettlement();
+  let html = "";
+  if (!Object.keys(balance).length) {
+    html = '<div class="empty">まだ立て替え記録がありません</div>';
+  } else {
+    html += Object.entries(balance).map(([name, amt]) =>
+      `<div class="settle-row"><span class="name-tag">${escapeHtml(name)}</span><span>${amt >= 0 ? '受け取り +' : '支払い -'}¥${Math.abs(Math.round(amt)).toLocaleString()}</span></div>`
+    ).join("");
+    if (transactions.length) {
+      html += '<div style="margin-top:10px; font-weight:600;">おすすめの精算方法:</div>';
+      html += transactions.map(t =>
+        `<div class="settle-row"><span>${escapeHtml(t.from)} → ${escapeHtml(t.to)}</span><span>¥${t.amount.toLocaleString()}</span></div>`
+      ).join("");
+    } else {
+      html += '<div style="margin-top:10px; color:var(--sub);">精算の必要はありません</div>';
+    }
+  }
+  document.getElementById("settlementBox").innerHTML = html;
+
+  const el = document.getElementById("expenseList");
+  if (!state.expenses.length) { el.innerHTML = ""; return; }
+  const sorted = [...state.expenses].sort((a,b) => (b.date||"").localeCompare(a.date||""));
+  el.innerHTML = sorted.map(e => `
+    <div class="list-item">
+      <div class="info">
+        <div class="title">${escapeHtml(e.desc)} - ¥${e.amount.toLocaleString()}</div>
+        <div class="meta">${e.date || ""} ・ 支払: ${escapeHtml(e.payer)} ・ 割り勘: ${e.splitWith.map(escapeHtml).join(", ")}</div>
+      </div>
+      <button class="ghost" onclick="removeExpense('${e.id}')">削除</button>
+    </div>`).join("");
+}
+
+// ---- 持ち物 ----
+async function addPacking() {
+  const name = document.getElementById("pName").value.trim();
+  const assignee = document.getElementById("pAssignee").value;
+  if (!name) { alert("持ち物を入力してください"); return; }
+  await syncBeforeWrite();
+  state.packing.push({ id: uid(), name, assignee, checked: false });
+  await saveData();
+  document.getElementById("pName").value = "";
+  renderAll();
+}
+
+async function togglePacking(id) {
+  await syncBeforeWrite();
+  const item = state.packing.find(p => p.id === id);
+  if (!item) return;
+  item.checked = !item.checked;
+  await saveData();
+  renderAll();
+}
+
+async function removePacking(id) {
+  await syncBeforeWrite();
+  state.packing = state.packing.filter(p => p.id !== id);
+  await saveData();
+  renderAll();
+}
+
+function renderPacking() {
+  const el = document.getElementById("packingList");
+  if (!state.packing.length) { el.innerHTML = '<div class="empty">まだ持ち物リストがありません</div>'; return; }
+  el.innerHTML = state.packing.map(p => `
+    <div class="list-item ${p.checked ? 'checked' : ''}">
+      <div class="checklist-item">
+        <input type="checkbox" ${p.checked ? 'checked' : ''} onchange="togglePacking('${p.id}')">
+        <div class="info">
+          <div class="title">${escapeHtml(p.name)}</div>
+          <div class="meta">${p.assignee ? "担当: " + escapeHtml(p.assignee) : ""}</div>
+        </div>
+      </div>
+      <button class="ghost" onclick="removePacking('${p.id}')">削除</button>
+    </div>`).join("");
+}
+
+// ---- 基本情報 ----
+async function saveTripMeta() {
+  const title = document.getElementById("tripTitleInput").value.trim();
+  const startDate = document.getElementById("tripStart").value;
+  const endDate = document.getElementById("tripEnd").value;
+  await syncBeforeWrite();
+  state.meta = { title, startDate, endDate };
+  await saveData();
+  renderAll();
+}
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+</script>
+</body>
+</html>
