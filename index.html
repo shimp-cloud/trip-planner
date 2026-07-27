@@ -354,6 +354,11 @@
         <button class="ghost" onclick="switchPerson()">切り替え</button>
       </div>
     </div>
+    <div class="card">
+      <h2>データが消えた・同期エラーが出るとき</h2>
+      <p style="font-size:0.85rem; color:var(--sub);">無料の保存先は一定時間で自動的に消えることがあります。このボタンで、このブラウザに残っている最後のバックアップから旅行を作り直せます。作り直すと共有コードが変わるので、相手にも新しいコードを伝え直してください。</p>
+      <button class="secondary" onclick="restoreFromBackupAsNewTrip()">バックアップから旅行を再作成</button>
+    </div>
     <div class="status" id="syncStatus"></div>
     <div class="row" style="margin-top:10px;">
       <button class="secondary" onclick="manualSync()">今すぐ同期</button>
@@ -365,6 +370,7 @@
 <script>
 const BLOB_BASE = "https://jsonblob.com/api/jsonBlob/";
 const BLOB_CREATE_URL = "https://jsonblob.com/api/jsonBlob"; // 末尾スラッシュなし。付けるとjsonblob側が404を返し、新規作成が常に失敗する
+const BACKUP_KEY = "tripDataBackup"; // jsonblobが消えたときのローカル復旧用
 const PEOPLE = ["碩紀", "ありさ"];
 
 let state = null;
@@ -669,6 +675,7 @@ async function loadData() {
   const res = await fetch(BLOB_BASE + blobId, { headers: { "Accept": "application/json" } });
   if (!res.ok) throw new Error("読み込み失敗 (" + res.status + ")");
   state = await res.json();
+  localStorage.setItem(BACKUP_KEY, JSON.stringify(state));
 }
 
 async function saveData() {
@@ -679,6 +686,7 @@ async function saveData() {
     body: JSON.stringify(state)
   });
   if (!res.ok) throw new Error("保存失敗 (" + res.status + ")");
+  localStorage.setItem(BACKUP_KEY, JSON.stringify(state));
 }
 
 async function syncBeforeWrite() {
@@ -705,13 +713,49 @@ async function initApp() {
   document.getElementById("whoAmIDisplay").textContent = myName;
   document.getElementById("shareCodeDisplay").textContent = blobId;
   setSyncStatus("読み込み中...");
-  try { await loadData(); } catch (e) { state = emptyState(); }
+  try {
+    await loadData();
+    setSyncStatus("最終同期: " + new Date().toLocaleTimeString());
+  } catch (e) {
+    const backup = localStorage.getItem(BACKUP_KEY);
+    if (backup) {
+      state = JSON.parse(backup);
+      setSyncStatus("同期エラー：共有コードが無効か期限切れの可能性があります。前回のバックアップを表示中です。「共有・設定」タブから旅行を再作成してください。");
+    } else {
+      state = emptyState();
+      setSyncStatus("同期エラー（バックアップもないため新規データとして開始します）");
+    }
+  }
   renderAll();
-  setSyncStatus("最終同期: " + new Date().toLocaleTimeString());
   setInterval(async () => {
     try { await loadData(); renderAll(); setSyncStatus("最終同期: " + new Date().toLocaleTimeString()); }
-    catch (e) { /* silent */ }
+    catch (e) { setSyncStatus("同期エラー：最新データを取得できません（共有コードが期限切れの可能性）"); }
   }, 20000);
+}
+
+async function restoreFromBackupAsNewTrip() {
+  if (!confirm("現在のデータを元に、新しい共有コードで旅行を作り直します。相手には新しいコードを伝え直す必要があります。よろしいですか？")) return;
+  const dataToRestore = state || JSON.parse(localStorage.getItem(BACKUP_KEY) || "null") || emptyState();
+  try {
+    const res = await fetch(BLOB_CREATE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(dataToRestore)
+    });
+    if (!res.ok) throw new Error("作成失敗 (" + res.status + ")");
+    const loc = res.headers.get("Location") || res.headers.get("location");
+    if (!loc) throw new Error("保存先IDを取得できませんでした");
+    blobId = loc.split("/").pop();
+    localStorage.setItem("tripBlobId", blobId);
+    state = dataToRestore;
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(state));
+    document.getElementById("shareCodeDisplay").textContent = blobId;
+    setSyncStatus("再作成しました: " + new Date().toLocaleTimeString());
+    renderAll();
+    alert("新しい共有コードを作成しました。相手にもこのコードを伝えて、「共有コードで参加」から入り直してもらってください。");
+  } catch (e) {
+    alert("再作成に失敗しました。\n" + e);
+  }
 }
 
 function copyShareCode() {
