@@ -355,6 +355,18 @@
       </div>
     </div>
     <div class="card">
+      <h2>Gemini連携（旅程提案の自動生成）</h2>
+      <p style="font-size:0.85rem; color:var(--sub);">Gemini APIキーを入力すると、「プラン提案」タブの「やりたいこと×日程から旅程を自動作成」でGeminiが旅程を組み立てます。キーはこの端末のブラウザにのみ保存され、旅行データと一緒に共有・送信されることはありません。相手の端末で使うには、相手にも自分のキーを入力してもらう必要があります（未設定なら今まで通り簡易ロジックで作成します）。</p>
+      <div class="row">
+        <input type="password" id="geminiApiKeyInput" placeholder="Gemini APIキー" style="flex:1;">
+        <button class="secondary" onclick="saveGeminiApiKey()">保存</button>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <button class="ghost" onclick="clearGeminiApiKey()">キーを削除</button>
+        <span id="geminiKeyStatus" style="font-size:0.8rem; color:var(--sub);"></span>
+      </div>
+    </div>
+    <div class="card">
       <h2>データが消えた・同期エラーが出るとき</h2>
       <p style="font-size:0.85rem; color:var(--sub);">無料の保存先は一定時間で自動的に消えることがあります。このボタンで、このブラウザに残っている最後のバックアップから旅行を作り直せます。作り直すと共有コードが変わるので、相手にも新しいコードを伝え直してください。</p>
       <button class="secondary" onclick="restoreFromBackupAsNewTrip()">バックアップから旅行を再作成</button>
@@ -371,6 +383,8 @@
 const BLOB_BASE = "https://jsonblob.com/api/jsonBlob/";
 const BLOB_CREATE_URL = "https://jsonblob.com/api/jsonBlob"; // 末尾スラッシュなし。付けるとjsonblob側が404を返し、新規作成が常に失敗する
 const BACKUP_KEY = "tripDataBackup"; // jsonblobが消えたときのローカル復旧用
+const GEMINI_API_KEY_STORAGE = "geminiApiKey"; // この端末のみに保存。旅行データ(jsonblob)には含めない
+const GEMINI_MODEL = "gemini-2.5-flash";
 const PEOPLE = ["碩紀", "ありさ"];
 
 let state = null;
@@ -526,19 +540,87 @@ function renderPlanWishlistCheckboxes() {
     </label>`).join("");
 }
 
-async function generateAutoPlan() {
-  const start = document.getElementById("planStartDate").value;
-  const end = document.getElementById("planEndDate").value;
-  const area = document.getElementById("planAreaName").value.trim();
-  if (!start || !end) { alert("出発日と終了日を入力してください"); return; }
-  const dates = dateRangeList(start, end);
-  if (!dates.length) { alert("日程が正しくありません（終了日は出発日以降の日付にしてください）"); return; }
+// ---------- Gemini連携 ----------
+function updateGeminiKeyStatus() {
+  const el = document.getElementById("geminiKeyStatus");
+  if (!el) return;
+  el.textContent = localStorage.getItem(GEMINI_API_KEY_STORAGE) ? "設定済み（旅程提案にGeminiを使用します）" : "未設定（簡易ロジックで旅程を作成します）";
+}
 
-  const checkedIds = Array.from(document.querySelectorAll(".planItemCheck:checked")).map(c => c.value);
-  const items = state.wishlist.filter(w => checkedIds.includes(w.id));
-  if (!items.length) { alert("旅程に入れる「やりたいこと」を1つ以上選んでください"); return; }
+function saveGeminiApiKey() {
+  const val = document.getElementById("geminiApiKeyInput").value.trim();
+  if (!val) { alert("APIキーを入力してください"); return; }
+  localStorage.setItem(GEMINI_API_KEY_STORAGE, val);
+  document.getElementById("geminiApiKeyInput").value = "";
+  updateGeminiKeyStatus();
+  alert("保存しました。次回の旅程自動作成からGeminiを使用します。");
+}
 
-  const sortedItems = [...items].sort((a,b) => Object.keys(b.votes).length - Object.keys(a.votes).length);
+function clearGeminiApiKey() {
+  localStorage.removeItem(GEMINI_API_KEY_STORAGE);
+  updateGeminiKeyStatus();
+}
+
+async function callGemini(apiKey, prompt) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + encodeURIComponent(apiKey);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" }
+    })
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error("Gemini APIエラー (" + res.status + ") " + errText.slice(0, 200));
+  }
+  const data = await res.json();
+  const text = data.candidates && data.candidates[0] && data.candidates[0].content
+    && data.candidates[0].content.parts && data.candidates[0].content.parts[0]
+    && data.candidates[0].content.parts[0].text;
+  if (!text) throw new Error("Geminiから有効な応答が得られませんでした");
+  return JSON.parse(text);
+}
+
+async function buildItineraryWithGemini(apiKey, dates, items, area) {
+  const itemList = items.map(i => ({ name: i.name, category: i.category, note: i.note || "" }));
+  const prompt =
+    "あなたは旅行の旅程作成アシスタントです。以下の候補地リストと日程から、1日ごとの旅程を作成してください。\n" +
+    "候補地リスト（この中のnameを必ずそのままtitleとlocationに使い、新しい場所を創作しないこと）:\n" +
+    JSON.stringify(itemList) + "\n" +
+    "旅行日程（この日付だけを使うこと）: " + JSON.stringify(dates) + "\n" +
+    (area ? "大まかな場所: " + area + "\n" : "") +
+    "条件: グルメ系の候補はできるだけ昼(12:00〜13:00)または夜(18:00〜19:00)の時間に配置する。1日に詰め込みすぎず、初日は午後から、最終日は午前中のみにする（日程が1日だけの場合は1日で全時間帯を使ってよい）。全ての候補を必ずしも使い切らなくてよい。\n" +
+    "出力は次のJSON形式の配列のみ。説明文やマークダウンは不要:\n" +
+    '[{"date":"YYYY-MM-DD","time":"HH:MM","title":"候補地のname","location":"候補地のname","note":"一言メモ"}]';
+
+  const result = await callGemini(apiKey, prompt);
+  if (!Array.isArray(result)) throw new Error("Geminiの応答形式が不正です（配列ではありません）");
+
+  const dateSet = new Set(dates);
+  const validNames = new Set(items.map(i => i.name));
+  const entries = [];
+  result.forEach(row => {
+    if (!row || !dateSet.has(row.date) || !row.time || !row.title || !validNames.has(row.title)) return;
+    entries.push({
+      id: uid(),
+      date: row.date,
+      time: row.time,
+      title: row.title,
+      location: row.location || row.title,
+      note: (row.note || "Geminiによる提案") + "（Geminiによる自動追加）"
+    });
+  });
+  if (!entries.length) throw new Error("Geminiの応答から有効な旅程を作れませんでした");
+
+  const usedNames = new Set(entries.map(e => e.title));
+  const leftover = items.filter(i => !usedNames.has(i.name));
+  return { entries, leftover };
+}
+
+function buildItineraryRuleBased(dates, items, area) {
+  const sortedItems = [...items].sort((a, b) => Object.keys(b.votes).length - Object.keys(a.votes).length);
   const gourmet = sortedItems.filter(i => i.category === "グルメ");
   const others = sortedItems.filter(i => i.category !== "グルメ");
 
@@ -553,7 +635,7 @@ async function generateAutoPlan() {
     return { date, times };
   });
 
-  const newEntries = [];
+  const entries = [];
   let gi = 0, oi = 0;
   slotPlan.forEach(day => {
     day.times.forEach(time => {
@@ -563,7 +645,7 @@ async function generateAutoPlan() {
       else if (oi < others.length) { item = others[oi]; oi++; }
       else if (gi < gourmet.length) { item = gourmet[gi]; gi++; }
       if (item) {
-        newEntries.push({
+        entries.push({
           id: uid(),
           date: day.date,
           time,
@@ -576,9 +658,42 @@ async function generateAutoPlan() {
   });
 
   const leftover = [...gourmet.slice(gi), ...others.slice(oi)];
+  return { entries, leftover };
+}
+
+async function generateAutoPlan() {
+  const start = document.getElementById("planStartDate").value;
+  const end = document.getElementById("planEndDate").value;
+  const area = document.getElementById("planAreaName").value.trim();
+  if (!start || !end) { alert("出発日と終了日を入力してください"); return; }
+  const dates = dateRangeList(start, end);
+  if (!dates.length) { alert("日程が正しくありません（終了日は出発日以降の日付にしてください）"); return; }
+
+  const checkedIds = Array.from(document.querySelectorAll(".planItemCheck:checked")).map(c => c.value);
+  const items = state.wishlist.filter(w => checkedIds.includes(w.id));
+  if (!items.length) { alert("旅程に入れる「やりたいこと」を1つ以上選んでください"); return; }
+
+  const apiKey = localStorage.getItem(GEMINI_API_KEY_STORAGE);
+  let entries, leftover, usedGemini = false;
+  if (apiKey) {
+    try {
+      const result = await buildItineraryWithGemini(apiKey, dates, items, area);
+      entries = result.entries;
+      leftover = result.leftover;
+      usedGemini = true;
+    } catch (e) {
+      console.warn("Gemini提案に失敗、簡易ロジックにフォールバックします:", e);
+      alert("Geminiでの旅程作成に失敗したため、簡易ロジックで作成します。\n" + e.message);
+    }
+  }
+  if (!entries) {
+    const fallback = buildItineraryRuleBased(dates, items, area);
+    entries = fallback.entries;
+    leftover = fallback.leftover;
+  }
 
   await syncBeforeWrite();
-  state.itinerary.push(...newEntries);
+  state.itinerary.push(...entries);
   if (area && !state.meta.title) state.meta.title = area;
   if (!state.meta.startDate) state.meta.startDate = start;
   if (!state.meta.endDate) state.meta.endDate = end;
@@ -588,8 +703,8 @@ async function generateAutoPlan() {
   const resultEl = document.getElementById("planResultInfo");
   resultEl.innerHTML = `
     <div class="suggestion-card">
-      <h3>旅程を作成しました</h3>
-      <div class="spots">${newEntries.length}件を行程表に追加しました。${leftover.length ? "日程に入りきらなかった候補: " + leftover.map(l => escapeHtml(l.name)).join("、") : "すべての候補を反映できました。"}</div>
+      <h3>旅程を作成しました${usedGemini ? "（Gemini提案）" : ""}</h3>
+      <div class="spots">${entries.length}件を行程表に追加しました。${leftover.length ? "日程に入りきらなかった候補: " + leftover.map(l => escapeHtml(l.name)).join("、") : "すべての候補を反映できました。"}</div>
       <div class="row" style="margin-top:8px;">
         <button class="secondary" onclick="document.querySelector('.tab-btn[data-tab=itinerary]').click()">行程表を見る</button>
       </div>
@@ -712,6 +827,7 @@ function setSyncStatus(text) {
 async function initApp() {
   document.getElementById("whoAmIDisplay").textContent = myName;
   document.getElementById("shareCodeDisplay").textContent = blobId;
+  updateGeminiKeyStatus();
   setSyncStatus("読み込み中...");
   try {
     await loadData();
